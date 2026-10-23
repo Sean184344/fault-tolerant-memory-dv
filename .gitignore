@@ -1,0 +1,29 @@
+# Python virtual environment
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Simulation outputs
+sim_build/
+results.xml
+*.vcd
+*.fst
+*.lxt
+*.lxt2
+*.vvp
+*.o
+*.a
+
+# Generated synthesis and physical-design files
+build/
+reports/
+results/
+*.log
+*.jou
+*.tmp
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
