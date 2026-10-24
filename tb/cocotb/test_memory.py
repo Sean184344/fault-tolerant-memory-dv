@@ -84,7 +84,68 @@ async def randomized_memory_test(dut):
         else:
             await transact(False, address)
 
+    # Fault injection: flip one bit in a stored ECC codeword.
+    fault_addr = 10
+    expected_data = reference[fault_addr]
+    original_codeword = int(dut.mem[fault_addr].value)
+
+    dut.mem[fault_addr].value = original_codeword ^ (1 << 5)
+
+    await transact(False, fault_addr)
+
+    assert int(dut.rdata.value) == expected_data, (
+        "Single-bit fault: incorrect data returned"
+    )
+    assert int(dut.single_error.value) == 1, (
+        "Single-bit fault was not flagged"
+    )
+    dut._log.info("PASS: single-bit fault corrected on read")
+
+    # Allow the background scrubber time to scan and repair the word.
+    timeout = 0
+    while int(dut.mem[fault_addr].value) != original_codeword and timeout < 1000:
+        await RisingEdge(dut.clk)
+        await Timer(1, unit="ns")
+        timeout += 1
+
+    assert int(dut.mem[fault_addr].value) == original_codeword, (
+        "Background scrubber did not repair the stored codeword"
+    )
+    dut._log.info("PASS: background scrubber repaired stored codeword")
+
+    # Inject two bit errors and verify detection without correction.
+    dut.mem[fault_addr].value = original_codeword ^ (1 << 5) ^ (1 << 8)
+
+    # Perform this read directly: the generic helper expects clean data
+    # and no error flags, which is inappropriate for an injected fault.
+    await FallingEdge(dut.clk)
+    dut.req_valid.value = 1
+    dut.req_write.value = 0
+    dut.addr.value = fault_addr
+
+    await RisingEdge(dut.clk)
+    await Timer(1, unit="ns")
+
+    assert int(dut.rsp_valid.value) == 1, (
+        "Missing response for double-bit fault read"
+    )
+    assert int(dut.double_error.value) == 1, (
+        "Double-bit fault was not detected"
+    )
+    assert int(dut.single_error.value) == 0, (
+        "Double-bit fault was incorrectly classified as single-bit"
+    )
+    assert int(dut.uncorrectable_error.value) == 0, (
+        "Double-bit fault unexpectedly raised uncorrectable_error"
+    )
+
+    await FallingEdge(dut.clk)
+    dut.req_valid.value = 0
+    dut.req_write.value = 0
+
+    dut._log.info("PASS: double-bit fault detected")
+
     dut._log.info(
         "PASS: 256 initial writes, 256 shuffled reads, "
-        "1000 randomized operations"
+        "1000 randomized operations, and fault-injection checks"
     )
